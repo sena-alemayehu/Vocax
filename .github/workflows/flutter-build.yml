@@ -97,8 +97,8 @@ jobs:
         working-directory: build_workspace
         run: flutter build apk --release
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
+       - name: Upload APK
+        uses: actions/upload-artifact@v6
         with:
           name: vocax-android-apk
           path: build_workspace/build/app/outputs/flutter-apk/app-release.apk
