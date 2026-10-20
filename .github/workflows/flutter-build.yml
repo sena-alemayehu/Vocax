@@ -1,4 +1,3 @@
-
 name: Build Vocax APK
 
 on:
@@ -34,6 +33,7 @@ jobs:
 
       - name: Copy Vocax source
         run: |
+          rm -rf build_workspace/lib
           cp -r lib build_workspace/
           cp pubspec.yaml build_workspace/
           rm -f build_workspace/test/widget_test.dart
@@ -64,6 +64,19 @@ jobs:
                       1,
                   )
 
+          # Android 11+ needs this so speech recognition services are visible.
+          if "android.speech.RecognitionService" not in content:
+              queries = (
+                  "    <queries>\n"
+                  "        <intent>\n"
+                  '            <action android:name="android.speech.RecognitionService" />\n'
+                  "        </intent>\n"
+                  "    </queries>\n"
+              )
+              content = content.replace(
+                  "<application", queries + "    <application", 1
+              )
+
           manifest.write_text(content)
           print("Android permissions configured.")
           PY
@@ -75,10 +88,6 @@ jobs:
       - name: Format Dart code
         working-directory: build_workspace
         run: dart format lib
-
-      - name: Check Dart formatting
-        working-directory: build_workspace
-        run: dart format --output=none --set-exit-if-changed lib
 
       - name: Analyze Dart code
         working-directory: build_workspace
@@ -95,4 +104,3 @@ jobs:
           path: build_workspace/build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
           retention-days: 7
-EOF
