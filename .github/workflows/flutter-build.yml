@@ -15,7 +15,7 @@ jobs:
 
     steps:
       - name: Checkout source code
-        uses: actions/upload-artifact@v6
+        uses: actions/checkout@v5
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -33,7 +33,6 @@ jobs:
 
       - name: Copy Vocax source
         run: |
-          rm -rf build_workspace/lib
           cp -r lib build_workspace/
           cp pubspec.yaml build_workspace/
           rm -f build_workspace/test/widget_test.dart
@@ -64,19 +63,6 @@ jobs:
                       1,
                   )
 
-          # Android 11+ needs this so speech recognition services are visible.
-          if "android.speech.RecognitionService" not in content:
-              queries = (
-                  "    <queries>\n"
-                  "        <intent>\n"
-                  '            <action android:name="android.speech.RecognitionService" />\n'
-                  "        </intent>\n"
-                  "    </queries>\n"
-              )
-              content = content.replace(
-                  "<application", queries + "    <application", 1
-              )
-
           manifest.write_text(content)
           print("Android permissions configured.")
           PY
@@ -89,6 +75,10 @@ jobs:
         working-directory: build_workspace
         run: dart format lib
 
+      - name: Check Dart formatting
+        working-directory: build_workspace
+        run: dart format --output=none --set-exit-if-changed lib
+
       - name: Analyze Dart code
         working-directory: build_workspace
         run: flutter analyze lib
@@ -97,7 +87,7 @@ jobs:
         working-directory: build_workspace
         run: flutter build apk --release
 
-       - name: Upload APK
+      - name: Upload APK
         uses: actions/upload-artifact@v6
         with:
           name: vocax-android-apk
