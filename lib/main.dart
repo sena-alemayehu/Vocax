@@ -11,6 +11,7 @@ const Color kBackground = Color(0xFF050A14);
 const Color kSurface = Color(0xFF0F1626);
 const Color kBlue = Color(0xFF3D8BFF);
 const Color kViolet = Color(0xFF7B5CFF);
+
 const LinearGradient kBrandGradient = LinearGradient(
   begin: Alignment.centerLeft,
   end: Alignment.centerRight,
@@ -45,7 +46,7 @@ class VocaxApp extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Welcome screen (matches the mockup)
+// Welcome screen
 // ---------------------------------------------------------------------------
 class WelcomeScreen extends StatefulWidget {
   const WelcomeScreen({super.key});
@@ -61,6 +62,7 @@ class _WelcomeScreenState extends State<WelcomeScreen>
   @override
   void initState() {
     super.initState();
+
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 3),
@@ -78,8 +80,12 @@ class _WelcomeScreenState extends State<WelcomeScreen>
       PageRouteBuilder(
         transitionDuration: const Duration(milliseconds: 450),
         pageBuilder: (_, __, ___) => const HomeScreen(),
-        transitionsBuilder: (_, animation, __, child) =>
-            FadeTransition(opacity: animation, child: child),
+        transitionsBuilder: (_, animation, __, child) {
+          return FadeTransition(
+            opacity: animation,
+            child: child,
+          );
+        },
       ),
     );
   }
@@ -106,9 +112,13 @@ class _WelcomeScreenState extends State<WelcomeScreen>
                   height: 130,
                   child: AnimatedBuilder(
                     animation: _controller,
-                    builder: (_, __) => CustomPaint(
-                      painter: WavePainter(progress: _controller.value),
-                    ),
+                    builder: (_, __) {
+                      return CustomPaint(
+                        painter: WavePainter(
+                          progress: _controller.value,
+                        ),
+                      );
+                    },
                   ),
                 ),
                 const SizedBox(height: 36),
@@ -159,7 +169,8 @@ class _WelcomeScreenState extends State<WelcomeScreen>
   }
 }
 
-/// Copyright footer shown at the bottom of each screen.
+// ---------------------------------------------------------------------------// Copyright footer
+// ---------------------------------------------------------------------------
 class CopyrightFooter extends StatelessWidget {
   const CopyrightFooter({super.key});
 
@@ -177,7 +188,9 @@ class CopyrightFooter extends StatelessWidget {
   }
 }
 
-/// Pill-shaped gradient button with a trailing icon.
+// ---------------------------------------------------------------------------
+// Reusable gradient button
+// ---------------------------------------------------------------------------
 class GradientButton extends StatelessWidget {
   const GradientButton({
     super.key,
@@ -239,7 +252,8 @@ class GradientButton extends StatelessWidget {
                         ),
                       ),
                     ),
-                    if (icon != null) Icon(icon, color: Colors.white),
+                    if (icon != null)
+                      Icon(icon, color: Colors.white),
                   ],
                 ),
               ),
@@ -251,7 +265,9 @@ class GradientButton extends StatelessWidget {
   }
 }
 
-/// Animated gradient audio-wave logo.
+// ---------------------------------------------------------------------------
+// Animated audio-wave logo
+// ---------------------------------------------------------------------------
 class WavePainter extends CustomPainter {
   WavePainter({required this.progress});
 
@@ -271,7 +287,10 @@ class WavePainter extends CustomPainter {
       ..shader = kBrandGradient.createShader(
         Rect.fromLTWH(0, 0, size.width, size.height),
       )
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 14)
+      ..maskFilter = const MaskFilter.blur(
+        BlurStyle.normal,
+        14,
+      )
       ..color = Colors.white.withValues(alpha: 0.4);
 
     final slot = size.width / _bars;
@@ -281,11 +300,13 @@ class WavePainter extends CustomPainter {
 
     for (var i = 0; i < _bars; i++) {
       final t = i / (_bars - 1);
-      // Bell-shaped envelope so the tallest bar sits in the middle.
-      final envelope = math.exp(-math.pow((t - 0.45) * 2.6, 2).toDouble());
+      final envelope = math.exp(
+        -math.pow((t - 0.45) * 2.6, 2).toDouble(),
+      );
       final wobble = 0.82 + 0.18 * math.sin(phase + i * 0.7);
       final height =
-          (size.height * 0.18 + size.height * 0.82 * envelope) * wobble;
+          (size.height * 0.18 + size.height * 0.82 * envelope) *
+              wobble;
 
       final rect = RRect.fromRectAndRadius(
         Rect.fromCenter(
@@ -302,12 +323,13 @@ class WavePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant WavePainter oldDelegate) =>
-      oldDelegate.progress != progress;
+  bool shouldRepaint(covariant WavePainter oldDelegate) {
+    return oldDelegate.progress != progress;
+  }
 }
 
 // ---------------------------------------------------------------------------
-// Home screen (voice assistant)
+// Home screen: voice assistant
 // ---------------------------------------------------------------------------
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -336,16 +358,26 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _setupTts() async {
     _tts.setStartHandler(() {
-      if (mounted) setState(() => _speaking = true);
+      if (mounted) {
+        setState(() => _speaking = true);
+      }
     });
+
     _tts.setCompletionHandler(() {
-      if (mounted) setState(() => _speaking = false);
+      if (mounted) {
+        setState(() => _speaking = false);
+      }
     });
+
     _tts.setCancelHandler(() {
-      if (mounted) setState(() => _speaking = false);
+      if (mounted) {
+        setState(() => _speaking = false);
+      }
     });
+
     _tts.setErrorHandler((message) {
       if (!mounted) return;
+
       setState(() {
         _speaking = false;
         _status = 'Speech output error: $message';
@@ -377,10 +409,14 @@ class _HomeScreenState extends State<HomeScreen> {
       final available = await _speech.initialize(
         onStatus: (status) {
           if (!mounted) return;
-          setState(() => _listening = _speech.isListening);
+
+          setState(() {
+            _listening = _speech.isListening;
+          });
         },
         onError: (error) {
           if (!mounted) return;
+
           setState(() {
             _listening = false;
             _status = 'Speech error: ${error.errorMsg}';
@@ -390,6 +426,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (!available) {
         if (!mounted) return;
+
         setState(() {
           _listening = false;
           _status =
@@ -399,6 +436,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       await _tts.stop();
+
       if (!mounted) return;
 
       setState(() {
@@ -407,35 +445,46 @@ class _HomeScreenState extends State<HomeScreen> {
       });
 
       await _speech.listen(
-        listenFor: const Duration(seconds: 30),
-        pauseFor: const Duration(seconds: 3),
-        listenOptions: stt.SpeechListenOptions(partialResults: true),
+        listenOptions: stt.SpeechListenOptions(
+          listenFor: const Duration(seconds: 30),
+          pauseFor: const Duration(seconds: 3),
+          partialResults: true,
+        ),
         onResult: (result) {
           if (!mounted) return;
-          setState(() => _recognizedText = result.recognizedWords);
 
-          if (result.finalResult && result.recognizedWords.trim().isNotEmpty) {
+          setState(() {
+            _recognizedText = result.recognizedWords;
+          });
+
+          if (result.finalResult &&
+              result.recognizedWords.trim().isNotEmpty) {
             _respond(result.recognizedWords.trim());
           }
         },
       );
     } catch (error) {
       if (!mounted) return;
+
       setState(() {
         _listening = false;
         _status = 'Could not start listening: $error';
       });
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() => _busy = false);
+      }
     }
   }
 
   Future<void> _respond(String words) async {
     if (_responding) return;
+
     _responding = true;
 
     try {
       await _speech.stop();
+
       if (!mounted) return;
 
       setState(() {
@@ -450,6 +499,7 @@ class _HomeScreenState extends State<HomeScreen> {
           .trim();
 
       final String reply;
+
       if (normalized.contains('hello vocax') ||
           normalized.contains('hey vocax') ||
           normalized == 'hi vocax') {
@@ -463,6 +513,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       await _tts.speak(reply);
+
       if (!mounted) return;
 
       setState(() {
@@ -471,6 +522,7 @@ class _HomeScreenState extends State<HomeScreen> {
       });
     } catch (error) {
       if (!mounted) return;
+
       setState(() {
         _speaking = false;
         _listening = false;
@@ -484,13 +536,16 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _stopListening() async {
     try {
       await _speech.stop();
+
       if (!mounted) return;
+
       setState(() {
         _listening = false;
         _status = 'Listening stopped.';
       });
     } catch (error) {
       if (!mounted) return;
+
       setState(() {
         _listening = false;
         _status = 'Could not stop listening: $error';
@@ -534,7 +589,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: SingleChildScrollView(
                     child: ConstrainedBox(
                       constraints: BoxConstraints(
-                        minHeight: MediaQuery.of(context).size.height * 0.6,
+                        minHeight:
+                            MediaQuery.of(context).size.height * 0.6,
                       ),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -604,8 +660,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       : _listening
                           ? 'Stop Listening'
                           : 'Start Listening',
-                  leadingIcon:
-                      _listening ? Icons.stop_rounded : Icons.mic_rounded,
+                  leadingIcon: _listening
+                      ? Icons.stop_rounded
+                      : Icons.mic_rounded,
                   onPressed: _busy
                       ? null
                       : _listening
@@ -615,7 +672,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(height: 12),
                 const Text(
                   'Listening lasts up to 30 seconds per session.',
-                  style: TextStyle(color: Colors.white38, fontSize: 12),
+                  style: TextStyle(
+                    color: Colors.white38,
+                    fontSize: 12,
+                  ),
                 ),
                 const SizedBox(height: 16),
                 const CopyrightFooter(),
@@ -629,8 +689,14 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Voice status orb
+// ---------------------------------------------------------------------------
 class _StatusOrb extends StatelessWidget {
-  const _StatusOrb({required this.listening, required this.speaking});
+  const _StatusOrb({
+    required this.listening,
+    required this.speaking,
+  });
 
   final bool listening;
   final bool speaking;
@@ -653,7 +719,10 @@ class _StatusOrb extends StatelessWidget {
             kViolet.withValues(alpha: active ? 0.35 : 0.15),
           ],
         ),
-        border: Border.all(color: kBlue.withValues(alpha: 0.6), width: 2),
+        border: Border.all(
+          color: kBlue.withValues(alpha: 0.6),
+          width: 2,
+        ),
         boxShadow: active
             ? [
                 BoxShadow(
