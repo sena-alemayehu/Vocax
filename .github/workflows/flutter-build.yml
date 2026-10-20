@@ -1,0 +1,98 @@
+
+name: Build Vocax APK
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate Android project
+        run: |
+          flutter create \
+            --platforms=android \
+            --org com.vocax \
+            --project-name vocax \
+            build_workspace
+
+      - name: Copy Vocax source
+        run: |
+          cp -r lib build_workspace/
+          cp pubspec.yaml build_workspace/
+          rm -f build_workspace/test/widget_test.dart
+
+      - name: Configure Android permissions
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          manifest = Path(
+              "build_workspace/android/app/src/main/AndroidManifest.xml"
+          )
+          content = manifest.read_text()
+
+          permissions = [
+              "android.permission.RECORD_AUDIO",
+              "android.permission.INTERNET",
+          ]
+
+          for permission in permissions:
+              if permission not in content:
+                  declaration = (
+                      f'    <uses-permission android:name="{permission}" />\n'
+                  )
+                  content = content.replace(
+                      "<application",
+                      declaration + "    <application",
+                      1,
+                  )
+
+          manifest.write_text(content)
+          print("Android permissions configured.")
+          PY
+
+      - name: Install dependencies
+        working-directory: build_workspace
+        run: flutter pub get
+
+      - name: Format Dart code
+        working-directory: build_workspace
+        run: dart format lib
+
+      - name: Check Dart formatting
+        working-directory: build_workspace
+        run: dart format --output=none --set-exit-if-changed lib
+
+      - name: Analyze Dart code
+        working-directory: build_workspace
+        run: flutter analyze lib
+
+      - name: Build release APK
+        working-directory: build_workspace
+        run: flutter build apk --release
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: vocax-android-apk
+          path: build_workspace/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 7
+EOF
