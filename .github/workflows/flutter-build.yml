@@ -11,11 +11,11 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout source code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -33,9 +33,11 @@ jobs:
 
       - name: Copy Vocax source
         run: |
+          rm -rf build_workspace/lib build_workspace/test
           cp -r lib build_workspace/
-          cp pubspec.yaml build_workspace/
-          rm -f build_workspace/test/widget_test.dart
+          cp -r test build_workspace/
+          cp -r assets build_workspace/
+          cp pubspec.yaml analysis_options.yaml build_workspace/
 
       - name: Configure Android permissions
         run: |
@@ -63,6 +65,19 @@ jobs:
                       1,
                   )
 
+          # Android 11+ needs this so speech recognition services are visible.
+          if "android.speech.RecognitionService" not in content:
+              queries = (
+                  "    <queries>\n"
+                  "        <intent>\n"
+                  '            <action android:name="android.speech.RecognitionService" />\n'
+                  "        </intent>\n"
+                  "    </queries>\n"
+              )
+              content = content.replace(
+                  "<application", queries + "    <application", 1
+              )
+
           manifest.write_text(content)
           print("Android permissions configured.")
           PY
@@ -73,22 +88,22 @@ jobs:
 
       - name: Format Dart code
         working-directory: build_workspace
-        run: dart format lib
-
-      - name: Check Dart formatting
-        working-directory: build_workspace
-        run: dart format --output=none --set-exit-if-changed lib
+        run: dart format lib test
 
       - name: Analyze Dart code
         working-directory: build_workspace
-        run: flutter analyze lib
+        run: flutter analyze lib test --no-fatal-infos
+
+      - name: Run tests
+        working-directory: build_workspace
+        run: flutter test
 
       - name: Build release APK
         working-directory: build_workspace
         run: flutter build apk --release
 
       - name: Upload APK
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: vocax-android-apk
           path: build_workspace/build/app/outputs/flutter-apk/app-release.apk
