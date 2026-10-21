@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/language_service.dart';
 import '../theme.dart';
 
-/// Row of chips for choosing the language Vocax listens in.
+/// Dropdown pill (globe + "EN") for choosing the language Vocax listens in.
 class LanguageSelector extends StatelessWidget {
   const LanguageSelector({
     super.key,
@@ -20,21 +20,55 @@ class LanguageSelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Wrap(
-      alignment: WrapAlignment.center,
-      spacing: 8,
-      runSpacing: 4,
-      children: [
-        for (final language in languages)
-          ChoiceChip(
-            label: Text(language.name),
-            selected: language.code == selected.code,
-            showCheckmark: false,
-            selectedColor: kBlue.withValues(alpha: 0.35),
-            backgroundColor: kSurface,
-            onSelected: enabled ? (_) => onSelected(language) : null,
+    return Opacity(
+      opacity: enabled ? 1 : 0.5,
+      child: PopupMenuButton<VocaxLanguage>(
+        enabled: enabled,
+        tooltip: 'Language',
+        position: PopupMenuPosition.under,
+        onSelected: onSelected,
+        itemBuilder: (context) => [
+          for (final language in languages)
+            PopupMenuItem<VocaxLanguage>(
+              value: language,
+              child: Row(
+                children: [
+                  Expanded(child: Text(language.name)),
+                  if (language.code == selected.code)
+                    const Icon(Icons.check_rounded, size: 18, color: kBlue),
+                ],
+              ),
+            ),
+        ],
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(10, 6, 4, 6),
+          decoration: BoxDecoration(
+            color: context.surfaceColor,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: kBlue.withValues(alpha: 0.35)),
           ),
-      ],
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.language_rounded, size: 18, color: context.textPrimary),
+              const SizedBox(width: 6),
+              Text(
+                selected.shortLabel,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: context.textPrimary,
+                ),
+              ),
+              Icon(
+                Icons.arrow_drop_down_rounded,
+                size: 22,
+                color: context.textSecondary,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

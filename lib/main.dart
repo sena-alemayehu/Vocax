@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 
 import 'app.dart';
+import 'services/settings_service.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const VocaxApp());
+
+  final settings = SettingsService();
+  await settings.load();
+
+  runApp(VocaxApp(settings: settings));
 }

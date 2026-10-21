@@ -18,6 +18,30 @@ class VoiceService {
 
   bool get isListening => _speech.isListening;
 
+  /// Turns recognizer error codes into something a person can act on.
+  static String friendlyError(String code) {
+    switch (code) {
+      case 'error_speech_timeout':
+      case 'error_no_match':
+        return 'I did not hear anything. Tap Start Listening and speak after the button changes.';
+      case 'error_permission':
+        return 'Microphone permission is needed. Allow it in your phone settings and try again.';
+      case 'error_network':
+      case 'error_network_timeout':
+      case 'error_server':
+        return 'The speech service could not connect. Check your internet and try again.';
+      case 'error_language_not_supported':
+      case 'error_language_unavailable':
+        return 'This language is not supported by the speech service on this phone.';
+      case 'error_audio':
+        return 'There was a problem with the microphone. Try again.';
+      case 'error_busy':
+        return 'The speech service is busy. Wait a moment and try again.';
+      default:
+        return 'Speech error: $code';
+    }
+  }
+
   Future<void> configureTts() async {
     _tts.setStartHandler(() => onSpeakingChanged?.call(true));
     _tts.setCompletionHandler(() => onSpeakingChanged?.call(false));
@@ -45,7 +69,7 @@ class VoiceService {
       onStatus: (_) => onListeningChanged?.call(_speech.isListening),
       onError: (error) {
         onListeningChanged?.call(false);
-        onError?.call('Speech error: ${error.errorMsg}');
+        onError?.call(friendlyError(error.errorMsg));
       },
     );
     return _speechReady;

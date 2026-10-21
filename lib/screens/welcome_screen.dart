@@ -1,20 +1,23 @@
 import 'package:flutter/material.dart';
 
+import '../services/settings_service.dart';
 import '../theme.dart';
 import '../widgets/copyright_footer.dart';
 import '../widgets/gradient_button.dart';
-import '../widgets/wave_painter.dart';
+import '../widgets/wave_logo.dart';
 import 'home_screen.dart';
 
 class WelcomeScreen extends StatelessWidget {
-  const WelcomeScreen({super.key});
+  const WelcomeScreen({super.key, required this.settings});
+
+  final SettingsService settings;
 
   void _getStarted(BuildContext context) {
     Navigator.of(context).pushReplacement(
       PageRouteBuilder<void>(
         transitionDuration: const Duration(milliseconds: 450),
         pageBuilder: (context, animation, secondaryAnimation) =>
-            const HomeScreen(),
+            HomeScreen(settings: settings),
         transitionsBuilder: (context, animation, secondaryAnimation, child) =>
             FadeTransition(opacity: animation, child: child),
       ),
@@ -25,7 +28,7 @@ class WelcomeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        decoration: vocaxBackground(center: const Alignment(0, -0.45)),
+        decoration: vocaxBackground(context, center: const Alignment(0, -0.45)),
         child: SafeArea(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 32),
@@ -33,34 +36,34 @@ class WelcomeScreen extends StatelessWidget {
               children: [
                 const Spacer(flex: 3),
                 const AnimatedWaveLogo(),
-                const SizedBox(height: 36),
-                const Text(
+                const SizedBox(height: 28),
+                Text(
                   'Vocax',
                   style: TextStyle(
                     fontSize: 56,
                     fontWeight: FontWeight.w600,
-                    color: Colors.white,
+                    color: context.textPrimary,
                     letterSpacing: -1,
                   ),
                 ),
                 const SizedBox(height: 22),
-                const Text(
+                Text(
                   'Your voice. Your world.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 19,
                     fontWeight: FontWeight.w600,
-                    color: Colors.white,
+                    color: context.textPrimary,
                   ),
                 ),
                 const SizedBox(height: 22),
-                const Text(
+                Text(
                   'A multilingual AI voice assistant\nfor everyday life.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 16,
                     height: 1.5,
-                    color: Colors.white70,
+                    color: context.textSecondary,
                   ),
                 ),
                 const Spacer(flex: 4),

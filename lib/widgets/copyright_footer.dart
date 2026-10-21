@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../theme.dart';
+
 /// Copyright footer shown at the bottom of each screen.
 class CopyrightFooter extends StatelessWidget {
   const CopyrightFooter({super.key});
@@ -9,8 +11,8 @@ class CopyrightFooter extends StatelessWidget {
     return Text(
       '© ${DateTime.now().year} Sena Alemayehu. All rights reserved.',
       textAlign: TextAlign.center,
-      style: const TextStyle(
-        color: Colors.white38,
+      style: TextStyle(
+        color: context.textMuted,
         fontSize: 12,
         letterSpacing: 0.2,
       ),

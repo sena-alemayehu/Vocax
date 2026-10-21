@@ -78,13 +78,20 @@ jobs:
                   "<application", queries + "    <application", 1
               )
 
+          # Show "Vocax" under the app icon instead of "vocax".
+          content = content.replace('android:label="vocax"', 'android:label="Vocax"')
+
           manifest.write_text(content)
-          print("Android permissions configured.")
+          print("Android permissions and app name configured.")
           PY
 
       - name: Install dependencies
         working-directory: build_workspace
         run: flutter pub get
+
+      - name: Generate app icons
+        working-directory: build_workspace
+        run: dart run flutter_launcher_icons
 
       - name: Format Dart code
         working-directory: build_workspace

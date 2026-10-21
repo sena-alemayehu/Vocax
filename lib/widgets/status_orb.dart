@@ -45,7 +45,7 @@ class StatusOrb extends StatelessWidget {
                 ? Icons.volume_up_rounded
                 : Icons.mic_none_rounded,
         size: 72,
-        color: Colors.white,
+        color: context.textPrimary,
       ),
     );
   }
