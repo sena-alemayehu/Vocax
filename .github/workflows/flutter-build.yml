@@ -59,6 +59,7 @@ jobs:
           permissions = [
               "android.permission.RECORD_AUDIO",
               "android.permission.INTERNET",
+              "android.permission.ACCESS_NETWORK_STATE",
               "android.permission.CALL_PHONE",
               "android.permission.READ_CONTACTS",
               "com.android.alarm.permission.SET_ALARM",
@@ -92,11 +93,32 @@ jobs:
                   "<application", queries + "    <application", 1
               )
 
-          # Show "Vocax" under the app icon instead of "vocax".
-          content = content.replace('android:label="vocax"', 'android:label="Vocax"')
+          # Accessibility service: screenshots, lock screen, tap, scroll and
+          # Wi-Fi / Bluetooth / airplane switches. The user turns it on once.
+          if "VocaxAccessibilityService" not in content:
+              service = (
+                  '        <service\n'
+                  '            android:name=".VocaxAccessibilityService"\n'
+                  '            android:exported="false"\n'
+                  '            android:label="Vocax AI"\n'
+                  '            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">\n'
+                  '            <intent-filter>\n'
+                  '                <action android:name="android.accessibilityservice.AccessibilityService" />\n'
+                  '            </intent-filter>\n'
+                  '            <meta-data\n'
+                  '                android:name="android.accessibilityservice"\n'
+                  '                android:resource="@xml/accessibility_service_config" />\n'
+                  '        </service>\n'
+              )
+              content = content.replace(
+                  "</application>", service + "    </application>", 1
+              )
+
+          # App name under the icon: "Vocax AI".
+          content = content.replace('android:label="vocax"', 'android:label="Vocax AI"')
 
           manifest.write_text(content)
-          print("Android permissions and app name configured.")
+          print("Android permissions, accessibility service and app name configured.")
           PY
 
       - name: Install dependencies

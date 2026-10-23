@@ -1,23 +1,27 @@
-# Vocax
+# Vocax AI
 
-A multilingual AI voice assistant for everyday life. *Your voice. Your world.*
+*Your Voice. Your World.* A multilingual AI voice assistant for everyday life.
 
-Built with Flutter. Listens in English, Amharic, Afaan Oromoo, French or Spanish (when the language is installed in the phone's speech service) and answers by voice. Spoken replies are still English only.
+Built with Flutter. Listens in English, Amharic, Afaan Oromoo, Tigrinya, French, Spanish and Chinese (when the language's voice pack is on the phone) and answers by voice. Spoken replies are still English only.
 
 ## Features
 
-- Side menu: language, dark mode switch, voice commands list, About.
-- Select Language screen (English, Amharic, Afaan Oromoo, Français, Español) and a quick dropdown in the top bar, remembered between launches.
-- Light and dark theme, toggled from the top bar or the menu, remembered between launches.
-- Vocax app icon (adaptive icon on Android) in `android/app/src/main/res`.
-- Voice control of the phone: open any installed app, call and text contacts, search Google/YouTube, navigate, alarms, timers, flashlight, volume, music, settings, battery, time.
+- Chat-style screen: your words on the right, Vocax AI on the left. Opening an app shows a card with the app icon, its name and "App opened successfully.", then launches it.
+- Web results (Google, YouTube, websites) open inside Vocax AI in a built-in web view.
+- First tap on Start listening: "Hello! I'm Vocax Ai Assistance. How can I help you today?"
+- Works offline: apps, calls, texts, alarms, flashlight, volume, music, screen control and settings need no internet. When offline the phone's on-device voice pack is used, and web searches answer with a friendly "you are offline".
+- "Who built you?" (also French, Spanish, Chinese, Amharic, Afaan Oromoo, Tigrinya): "I was built by Sena Alemayehu, and he is a professional software engineer."
+- Side menu: Language, App Permissions, Voice commands, About. Light/dark toggle stays in the top bar.
+- Language screen shows each language's voice status ("Voice ready" / "Install voice" with steps).
+- App Permissions screen: microphone, contacts, phone calls, Accessibility, with one-tap buttons.
+- Accessibility Service (turn on once): screenshots, lock screen, back/home/recents, notifications, scroll/swipe, tap text on screen, type text, and Wi-Fi / Bluetooth / airplane mode / hotspot / location / rotation switches.
 
 ## Project structure
 
 ```
 Vocax/
 ├── .github/workflows/flutter-build.yml   CI: icon, analyze, test, build the APK
-├── android/                              icons + native Kotlin (MainActivity.kt)
+├── android/                              icons + native Kotlin (MainActivity.kt, VocaxAccessibilityService.kt)
 ├── assets/
 │   ├── images/logo.png                   wave logo used in the app
 │   └── icons/                            app icon + adaptive icon foreground
@@ -27,8 +31,10 @@ Vocax/
 │   ├── theme.dart                        colors, gradient, background
 │   ├── screens/
 │   │   ├── welcome_screen.dart           "Get Started" screen
-│   │   ├── language_screen.dart          Select Language screen
-│   │   └── home_screen.dart              top bar + listening / speaking screen
+│   │   ├── language_screen.dart          Select Language screen + voice status
+│   │   ├── permissions_screen.dart       App Permissions screen
+│   │   ├── web_screen.dart               in-app web view
+│   │   └── home_screen.dart              chat screen + mic button
 │   ├── services/
 │   │   ├── voice_service.dart            speech recognition + text to speech
 │   │   ├── command_handler.dart          understands what you say, picks the action
@@ -38,7 +44,7 @@ Vocax/
 │   │   ├── fuzzy_match.dart              forgiving name matching
 │   │   ├── language_service.dart         supported languages
 │   │   └── settings_service.dart         saved theme + language
-│   ├── models/                           InstalledApp, DeviceContact
+│   ├── models/                           InstalledApp, DeviceContact, ChatMessage, CommandResult
 │   └── widgets/                          drawer, dialogs, language dropdown, logo...
 ├── test/
 ├── pubspec.yaml
@@ -64,13 +70,20 @@ Vocax/
 | "What is my battery level", "What time is it", "What is the date" | answers |
 | "Hello Vocax", "How are you", "What is your name" | small talk |
 
-The main verbs (open, call, search) also work in French, Spanish, Amharic and Afaan Oromoo. Replies are spoken in English.
+| "Turn on / off Wi-Fi", "Turn on Bluetooth", "Airplane mode on" | flips the switch through the Accessibility Service (falls back to opening the settings page) |
+| "Take a screenshot", "Lock the screen", "Go back", "Go home", "Recent apps", "Open notifications" | needs the Accessibility Service |
+| "Scroll down", "Swipe up", "Tap Search", "Type hello" | acts on the app underneath (Accessibility Service) |
+| "Who built you?" | names Sena Alemayehu |
+
+The main verbs (open, call, search) also work in French, Spanish, Chinese, Amharic, Tigrinya and Afaan Oromoo. Replies are spoken in English.
 
 ### Limits (Android rules)
 
-- Android does not let apps flip Wi-Fi, Bluetooth or airplane mode on or off, so Vocax opens the settings page.
+- Other installed apps cannot be embedded inside Vocax AI. Vocax shows the result card in the chat, then launches the app. Web pages do open inside Vocax AI.
+- Accessibility Service must be switched on by the user once (menu, App Permissions, Turn on). On Android 13+ an APK installed outside the Play Store also needs App info, three dots, "Allow restricted settings".
+- Switching Wi-Fi/Bluetooth/airplane mode works by tapping the quick-settings tile for you, so it depends on the phone's layout; if the tile is not found Vocax opens the settings page instead.
 - Text messages open ready to send; you tap Send. This avoids sending a wrongly heard message.
-- Controlling other apps' screens ("scroll", "tap like"), taking screenshots or locking the screen needs an Android Accessibility Service, which is a separate feature.
+- Voice packs cannot be installed silently by an app. The Language screen shows what is installed and walks you to the phone's speech settings. Google's speech service may not offer Afaan Oromoo or Tigrinya on every phone.
 
 ## App icon
 
@@ -84,7 +97,6 @@ To work on a computer: run `flutter create --platforms=android .` once in this f
 
 ## Next steps
 
-- Accessibility Service: screenshots, lock screen, tapping and scrolling in other apps.
-- Replies and spoken output in Afaan Oromoo, Amharic, French and Spanish.
+- Replies and spoken output in Afaan Oromoo, Amharic, Tigrinya, French, Spanish and Chinese.
 - Always-listening "Hey Vocax" wake word.
 - Smarter answers for open questions (an AI model).

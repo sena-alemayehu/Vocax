@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="vocax_accessibility_description">Lets Vocax AI follow your voice commands on this phone: go back or home, take screenshots, lock the screen, scroll, tap buttons, type text, and switch Wi-Fi, Bluetooth and airplane mode. It only acts when you ask.</string>
+</resources>

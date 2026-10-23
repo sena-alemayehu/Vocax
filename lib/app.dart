@@ -15,7 +15,7 @@ class VocaxApp extends StatelessWidget {
       listenable: settings,
       builder: (context, child) {
         return MaterialApp(
-          title: 'Vocax',
+          title: 'Vocax AI',
           debugShowCheckedModeBanner: false,
           theme: buildVocaxTheme(Brightness.light),
           darkTheme: buildVocaxTheme(Brightness.dark),

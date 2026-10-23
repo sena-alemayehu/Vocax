@@ -34,6 +34,16 @@ class VocaxLanguage {
 
   /// Short label such as "EN".
   String get shortLabel => badge;
+
+  /// True when one of the recognizer's [localeIds] is this language.
+  bool isIn(Iterable<String> localeIds) {
+    return localeIds.any((id) => languageOf(id) == code);
+  }
+}
+
+/// `en_US`, `en-US` and `EN` all give `en`.
+String languageOf(String localeId) {
+  return localeId.toLowerCase().replaceAll('-', '_').split('_').first;
 }
 
 /// The languages Vocax can listen in.
@@ -67,6 +77,15 @@ class LanguageService {
       speechLocale: 'om_ET',
     ),
     VocaxLanguage(
+      code: 'ti',
+      name: 'ትግርኛ',
+      englishName: 'Tigrinya',
+      subtitle: 'Tigrinya',
+      badge: 'TI',
+      color: Color(0xFF7B5CFF),
+      speechLocale: 'ti_ET',
+    ),
+    VocaxLanguage(
       code: 'fr',
       name: 'Français',
       englishName: 'French',
@@ -83,6 +102,15 @@ class LanguageService {
       badge: 'ES',
       color: Color(0xFFD93025),
       speechLocale: 'es_ES',
+    ),
+    VocaxLanguage(
+      code: 'zh',
+      name: '中文',
+      englishName: 'Chinese',
+      subtitle: 'Chinese (Mandarin)',
+      badge: 'ZH',
+      color: Color(0xFFF29900),
+      speechLocale: 'zh_CN',
     ),
   ];
 

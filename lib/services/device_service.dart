@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/services.dart';
 
 import '../models/device_contact.dart';
@@ -13,7 +15,13 @@ class DeviceService {
 
   Future<bool> launchApp(String package) async => false;
 
+  /// The app icon as PNG bytes.
+  Future<Uint8List?> appIcon(String package) async => null;
+
   Future<bool> openUrl(String url) async => false;
+
+  /// Whether the phone has a working internet connection.
+  Future<bool> isOnline() async => true;
 
   /// Opens the dialer with [number] filled in.
   Future<bool> dial(String number) async => false;
@@ -26,8 +34,11 @@ class DeviceService {
 
   Future<List<DeviceContact>> listContacts() async => const [];
 
-  /// Asks for `contacts` and/or `phone`. True when all are granted.
+  /// Asks for `microphone`, `contacts` and/or `phone`. True when all granted.
   Future<bool> requestPermissions(List<String> names) async => false;
+
+  /// Which of `microphone`, `contacts`, `phone` are allowed.
+  Future<Map<String, bool>> permissionStatus() async => const {};
 
   Future<bool> flashlight(bool on) async => false;
 
@@ -39,8 +50,17 @@ class DeviceService {
   Future<bool> media(String action) async => false;
 
   /// Opens a system settings page (wifi, bluetooth, airplane, location,
-  /// display, sound, battery_saver, data, nfc, accessibility, apps, settings).
+  /// display, sound, battery_saver, data, nfc, accessibility, apps, ...).
   Future<bool> openSettings(String target) async => false;
+
+  /// Opens this app's page in system settings (permissions).
+  Future<bool> openAppSettings() async => false;
+
+  /// Opens the phone's voice input settings (offline speech packs).
+  Future<bool> openVoiceSettings() async => false;
+
+  /// Opens the screen for installing text-to-speech voices.
+  Future<bool> installTtsData() async => false;
 
   Future<bool> setAlarm(int hour, int minute, {String? label}) async => false;
 
@@ -50,6 +70,28 @@ class DeviceService {
 
   /// Battery level in percent, or -1.
   Future<int> batteryLevel() async => -1;
+
+  // ---- Accessibility service (must be turned on by the user) ----
+
+  Future<bool> a11yEnabled() async => false;
+
+  /// [name]: home, back, recents, notifications, quick_settings, power, lock,
+  /// screenshot. With [stepAside] Vocax first moves out of the way.
+  Future<bool> a11yAction(String name, {bool stepAside = false}) async => false;
+
+  /// [direction]: up, down, left or right.
+  Future<bool> a11yScroll(String direction) async => false;
+
+  /// Taps the item on screen with this text.
+  Future<bool> a11yClick(String text) async => false;
+
+  /// Types [text] into the field that has the cursor in another app.
+  Future<bool> a11yType(String text) async => false;
+
+  /// Switches a quick-settings tile. Returns done, already, notfound, failed
+  /// or noservice.
+  Future<String> toggleSystem(List<String> labels, bool on) async =>
+      'noservice';
 }
 
 /// Android implementation, backed by `MainActivity.kt`.
@@ -89,7 +131,14 @@ class PlatformDeviceService extends DeviceService {
       _flag('launchApp', {'package': package});
 
   @override
+  Future<Uint8List?> appIcon(String package) =>
+      _invoke<Uint8List>('appIcon', {'package': package});
+
+  @override
   Future<bool> openUrl(String url) => _flag('openUrl', {'url': url});
+
+  @override
+  Future<bool> isOnline() async => (await _invoke<bool>('online')) ?? true;
 
   @override
   Future<bool> dial(String number) => _flag('dial', {'number': number});
@@ -120,6 +169,16 @@ class PlatformDeviceService extends DeviceService {
       _flag('requestPermissions', {'names': names});
 
   @override
+  Future<Map<String, bool>> permissionStatus() async {
+    final raw = await _invoke<Map<dynamic, dynamic>>('permissionStatus');
+    if (raw == null) return const {};
+
+    return {
+      for (final entry in raw.entries) entry.key as String: entry.value == true,
+    };
+  }
+
+  @override
   Future<bool> flashlight(bool on) => _flag('flashlight', {'on': on});
 
   @override
@@ -139,6 +198,15 @@ class PlatformDeviceService extends DeviceService {
       _flag('openSettings', {'target': target});
 
   @override
+  Future<bool> openAppSettings() => _flag('openAppSettings');
+
+  @override
+  Future<bool> openVoiceSettings() => _flag('openVoiceSettings');
+
+  @override
+  Future<bool> installTtsData() => _flag('installTtsData');
+
+  @override
   Future<bool> setAlarm(int hour, int minute, {String? label}) =>
       _flag('alarm', {'hour': hour, 'minute': minute, 'label': label});
 
@@ -153,5 +221,31 @@ class PlatformDeviceService extends DeviceService {
   Future<int> batteryLevel() async {
     final value = await _invoke<int>('battery');
     return value ?? -1;
+  }
+
+  @override
+  Future<bool> a11yEnabled() => _flag('a11yEnabled');
+
+  @override
+  Future<bool> a11yAction(String name, {bool stepAside = false}) =>
+      _flag('a11yAction', {'name': name, 'stepAside': stepAside});
+
+  @override
+  Future<bool> a11yScroll(String direction) =>
+      _flag('a11yScroll', {'direction': direction});
+
+  @override
+  Future<bool> a11yClick(String text) => _flag('a11yClick', {'text': text});
+
+  @override
+  Future<bool> a11yType(String text) => _flag('a11yType', {'text': text});
+
+  @override
+  Future<String> toggleSystem(List<String> labels, bool on) async {
+    final outcome = await _invoke<String>('a11yToggle', {
+      'labels': labels,
+      'on': on,
+    });
+    return outcome ?? 'failed';
   }
 }

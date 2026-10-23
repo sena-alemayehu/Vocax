@@ -38,7 +38,7 @@ class WelcomeScreen extends StatelessWidget {
                 const AnimatedWaveLogo(),
                 const SizedBox(height: 28),
                 Text(
-                  'Vocax',
+                  'Vocax AI',
                   style: TextStyle(
                     fontSize: 56,
                     fontWeight: FontWeight.w600,
@@ -48,7 +48,7 @@ class WelcomeScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 22),
                 Text(
-                  'Your voice. Your world.',
+                  'Your Voice. Your World.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 19,

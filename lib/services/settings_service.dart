@@ -3,15 +3,20 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'language_service.dart';
 
-/// App settings (theme and language), saved on the device.
+/// App settings (theme, language, first-time flags), saved on the device.
 class SettingsService extends ChangeNotifier {
   static const String _darkModeKey = 'dark_mode';
   static const String _languageKey = 'language';
+  static const String _greetedKey = 'greeted';
 
   bool _darkMode = true;
+  bool _greeted = false;
   String _languageCode = LanguageService.supported.first.code;
 
   bool get darkMode => _darkMode;
+
+  /// True once Vocax has said its first-time hello.
+  bool get greeted => _greeted;
 
   ThemeMode get themeMode => _darkMode ? ThemeMode.dark : ThemeMode.light;
 
@@ -23,6 +28,7 @@ class SettingsService extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       _darkMode = prefs.getBool(_darkModeKey) ?? true;
+      _greeted = prefs.getBool(_greetedKey) ?? false;
       _languageCode = LanguageService.byCode(prefs.getString(_languageKey)).code;
     } catch (_) {
       // Fall back to the defaults when storage is unavailable.
@@ -44,6 +50,12 @@ class SettingsService extends ChangeNotifier {
     _languageCode = resolved;
     notifyListeners();
     await _save((prefs) => prefs.setString(_languageKey, resolved));
+  }
+
+  Future<void> markGreeted() async {
+    if (_greeted) return;
+    _greeted = true;
+    await _save((prefs) => prefs.setBool(_greetedKey, true));
   }
 
   Future<void> _save(Future<bool> Function(SharedPreferences prefs) write) async {

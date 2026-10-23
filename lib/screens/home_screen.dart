@@ -1,17 +1,28 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../models/chat_message.dart';
 import '../services/command_handler.dart';
+import '../services/device_service.dart';
 import '../services/language_service.dart';
 import '../services/settings_service.dart';
 import '../services/voice_service.dart';
 import '../theme.dart';
+import '../widgets/chat_widgets.dart';
 import '../widgets/copyright_footer.dart';
-import '../widgets/gradient_button.dart';
 import '../widgets/language_selector.dart';
-import '../widgets/status_orb.dart';
+import '../widgets/mic_button.dart';
 import '../widgets/vocax_dialogs.dart';
 import '../widgets/vocax_drawer.dart';
+import '../widgets/wave_logo.dart';
 import 'language_screen.dart';
+import 'permissions_screen.dart';
+import 'web_screen.dart';
+
+/// What Vocax AI says the first time you tap Start listening.
+const String kGreeting =
+    "Hello! I'm Vocax Ai Assistance. How can I help you today?";
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.settings});
@@ -22,24 +33,31 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  final ScrollController _scroll = ScrollController();
+  final DeviceService _device = PlatformDeviceService();
   final VoiceService _voice = VoiceService();
-  final CommandHandler _commands = CommandHandler();
+  late final CommandHandler _commands = CommandHandler(device: _device);
+
+  final List<ChatMessage> _messages = [];
 
   bool _listening = false;
   bool _busy = false;
   bool _speaking = false;
   bool _responding = false;
+  bool _online = true;
+  bool _greeted = false;
 
-  String _recognizedText = '';
-  String _status = 'Tap the button and say "Hello Vocax".';
+  String _partial = '';
+  String _status = 'Tap the mic and say "Hello Vocax".';
 
   VocaxLanguage get _language => widget.settings.language;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     widget.settings.addListener(_onSettingsChanged);
     _voice
       ..onListeningChanged = (value) {
@@ -53,21 +71,51 @@ class _HomeScreenState extends State<HomeScreen> {
         setState(() {
           _listening = false;
           _speaking = false;
+          _partial = '';
           _status = message;
         });
       };
     _voice.configureTts();
+    _checkOnline();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     widget.settings.removeListener(_onSettingsChanged);
+    _scroll.dispose();
     _voice.dispose();
     super.dispose();
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _checkOnline();
+  }
+
   void _onSettingsChanged() {
     if (mounted) setState(() {});
+  }
+
+  Future<void> _checkOnline() async {
+    final online = await _device.isOnline();
+    if (mounted && online != _online) setState(() => _online = online);
+  }
+
+  void _add(ChatMessage message) {
+    setState(() => _messages.add(message));
+    _scrollToEnd();
+  }
+
+  void _scrollToEnd() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scroll.hasClients) return;
+      _scroll.animateTo(
+        _scroll.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+      );
+    });
   }
 
   Future<void> _startListening() async {
@@ -75,14 +123,29 @@ class _HomeScreenState extends State<HomeScreen> {
 
     setState(() {
       _busy = true;
-      _status = 'Checking speech recognition...';
-      _recognizedText = '';
+      _status = 'Getting ready...';
+      _partial = '';
     });
 
     try {
+      // First tap after the app opens: say hello.
+      if (!_greeted) {
+        _greeted = true;
+        _add(ChatMessage.assistant(kGreeting));
+        widget.settings.markGreeted();
+        await _voice.speak(kGreeting);
+        if (!mounted) return;
+      }
+
+      final online = await _device.isOnline();
+      if (!mounted) return;
+      _online = online;
+
       final language = _language;
       final started = await _voice.startListening(
         localeId: language.speechLocale,
+        // No internet: use the voice pack stored on the phone.
+        onDevice: !online,
         onResult: _onSpeechResult,
       );
 
@@ -92,16 +155,21 @@ class _HomeScreenState extends State<HomeScreen> {
         setState(() {
           _listening = false;
           _status =
-              'Speech recognition is unavailable. Check your microphone permission and Android speech service.';
+              'Speech recognition is unavailable. Open the menu, App Permissions, and allow the microphone.';
         });
         return;
       }
 
       setState(() {
         _listening = true;
-        _status = _voice.usedFallbackLocale
-            ? 'Listening... ${language.englishName} is not installed on this phone, so the system language is used.'
-            : 'Listening in ${language.englishName}... Say "Hello Vocax".';
+        if (_voice.usedFallbackLocale) {
+          _status =
+              'Listening... ${language.englishName} voice is not installed on this phone, so the system language is used. See menu, Language.';
+        } else if (!online) {
+          _status = 'Offline. Listening in ${language.englishName} on this phone...';
+        } else {
+          _status = 'Listening in ${language.englishName}...';
+        }
       });
     } catch (error) {
       if (!mounted) return;
@@ -116,7 +184,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _onSpeechResult(String words, bool isFinal) {
     if (!mounted) return;
-    setState(() => _recognizedText = words);
+    setState(() => _partial = words);
+    _scrollToEnd();
 
     if (isFinal && words.trim().isNotEmpty) {
       _respond(words.trim());
@@ -133,16 +202,63 @@ class _HomeScreenState extends State<HomeScreen> {
 
       setState(() {
         _listening = false;
-        _status = 'Vocax is preparing a response...';
+        _partial = '';
+        _status = 'Thinking...';
       });
+      _add(ChatMessage.user(words));
 
-      final reply = await _commands.handle(words);
-      await _voice.speak(reply);
+      final result = await _commands.handleFull(words);
       if (!mounted) return;
 
+      final app = result.app;
+      if (app != null) {
+        // Show the app card first, then open the app.
+        final message = ChatMessage.assistant(
+          result.reply,
+          app: app,
+          appIcon: result.appIcon,
+          launchStatus: AppLaunchStatus.opening,
+        );
+        _add(message);
+        unawaited(_voice.speak(result.reply));
+
+        await Future<void>.delayed(const Duration(milliseconds: 900));
+        final opened = await result.launch?.call() ?? false;
+        if (!mounted) return;
+
+        setState(() {
+          message.launchStatus =
+              opened ? AppLaunchStatus.opened : AppLaunchStatus.failed;
+          _status = 'Tap the mic to ask something else.';
+        });
+        return;
+      }
+
+      _add(ChatMessage.assistant(result.reply));
+
+      final webUrl = result.webUrl;
+      if (webUrl != null) {
+        // Web results open inside Vocax AI.
+        unawaited(_voice.speak(result.reply));
+        setState(() => _status = 'Tap the mic to ask something else.');
+        unawaited(
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (context) => WebScreen(
+                title: result.webTitle ?? 'Vocax AI',
+                url: webUrl,
+              ),
+            ),
+          ),
+        );
+        return;
+      }
+
+      await _voice.speak(result.reply);
+      if (!mounted) return;
       setState(() {
         _speaking = false;
-        _status = 'Response complete. Tap to try again.';
+        _status = 'Tap the mic to ask something else.';
       });
     } catch (error) {
       if (!mounted) return;
@@ -162,6 +278,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
       setState(() {
         _listening = false;
+        _partial = '';
         _status = 'Listening stopped.';
       });
     } catch (error) {
@@ -173,6 +290,10 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  void _open(Widget screen) {
+    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => screen));
+  }
+
   @override
   Widget build(BuildContext context) {
     final idle = !_listening && !_busy && !_responding;
@@ -181,22 +302,25 @@ class _HomeScreenState extends State<HomeScreen> {
       key: _scaffoldKey,
       drawer: VocaxDrawer(
         settings: widget.settings,
-        onLanguageTap: () => Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (context) => LanguageScreen(settings: widget.settings),
+        onLanguageTap: () => _open(
+          LanguageScreen(
+            settings: widget.settings,
+            voice: _voice,
+            device: _device,
           ),
         ),
+        onPermissionsTap: () => _open(PermissionsScreen(device: _device)),
         onCommandsTap: () => showCommandsDialog(context),
         onAboutTap: () => showAboutVocax(context),
       ),
       body: Container(
         decoration: vocaxBackground(context),
         child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Column(
-              children: [
-                _Header(
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: _Header(
                   language: _language,
                   languageEnabled: idle,
                   darkMode: widget.settings.darkMode,
@@ -205,81 +329,79 @@ class _HomeScreenState extends State<HomeScreen> {
                       widget.settings.setLanguage(language.code),
                   onToggleTheme: widget.settings.toggleTheme,
                 ),
-                Expanded(
-                  child: SingleChildScrollView(
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                        minHeight: MediaQuery.of(context).size.height * 0.55,
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            StatusOrb(
-                              listening: _listening,
-                              speaking: _speaking,
-                            ),
-                            const SizedBox(height: 32),
-                            Text(
-                              'Your voice. Your world.',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.w600,
-                                color: context.textPrimary,
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              _status,
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: context.textSecondary,
-                                fontSize: 15,
-                                height: 1.4,
-                              ),
-                            ),
-                            if (_recognizedText.isNotEmpty) ...[
-                              const SizedBox(height: 24),
-                              _HeardCard(text: _recognizedText),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ),
+              ),
+              if (!_online) const _OfflineBanner(),
+              Expanded(child: _buildConversation(context)),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 28),
+                child: Text(
+                  _status,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: context.textSecondary,
+                    fontSize: 14,
+                    height: 1.35,
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: GradientButton(
-                    label: _busy
-                        ? 'Please wait...'
-                        : _listening
-                            ? 'Stop Listening'
-                            : 'Start Listening',
-                    leadingIcon:
-                        _listening ? Icons.stop_rounded : Icons.mic_rounded,
-                    onPressed: _busy
-                        ? null
-                        : _listening
-                            ? _stopListening
-                            : _startListening,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'Listening lasts up to 30 seconds per session.',
-                  style: TextStyle(color: context.textMuted, fontSize: 12),
-                ),
-                const SizedBox(height: 16),
-                const CopyrightFooter(),
-                const SizedBox(height: 16),
-              ],
-            ),
+              ),
+              MicButton(
+                listening: _listening,
+                speaking: _speaking,
+                busy: _busy,
+                onPressed: _listening ? _stopListening : _startListening,
+              ),
+              const CopyrightFooter(),
+              const SizedBox(height: 12),
+            ],
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildConversation(BuildContext context) {
+    if (_messages.isEmpty && _partial.isEmpty) {
+      return Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const AnimatedWaveLogo(width: 150),
+              const SizedBox(height: 24),
+              Text(
+                'Your Voice. Your World.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w600,
+                  color: context.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Try: "Open YouTube", "Call Mom", or "Turn on the flashlight".',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 15,
+                  height: 1.4,
+                  color: context.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return ListView(
+      controller: _scroll,
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+      children: [
+        for (final message in _messages) ChatBubble(message: message),
+        if (_partial.isNotEmpty)
+          ChatBubble(message: ChatMessage.user(_partial), faded: true),
+      ],
     );
   }
 }
@@ -316,7 +438,7 @@ class _Header extends StatelessWidget {
           ),
           Expanded(
             child: Text(
-              'Vocax',
+              'Vocax AI',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 22,
@@ -345,35 +467,29 @@ class _Header extends StatelessWidget {
   }
 }
 
-class _HeardCard extends StatelessWidget {
-  const _HeardCard({required this.text});
-
-  final String text;
+class _OfflineBanner extends StatelessWidget {
+  const _OfflineBanner();
 
   @override
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(18),
+      margin: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
-        color: context.surfaceColor,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: kBlue.withValues(alpha: 0.35)),
+        color: const Color(0xFFF29900).withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(14),
       ),
-      child: Column(
+      child: Row(
         children: [
-          Text(
-            'I heard:',
-            style: TextStyle(
-              fontWeight: FontWeight.w600,
-              color: context.textSecondary,
+          const Icon(Icons.wifi_off_rounded, size: 18, color: Color(0xFFF29900)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Offline: apps, calls, alarms and phone controls still work. '
+              'Web search needs internet.',
+              style: TextStyle(fontSize: 12.5, color: context.textSecondary),
             ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            text,
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 18, color: context.textPrimary),
           ),
         ],
       ),

@@ -56,6 +56,14 @@ Future<void> showCommandsDialog(BuildContext context) {
                 command('"Search for weather in Addis Ababa"', 'Searches Google.'),
                 command('"Play Ethiopian music on YouTube"', 'Searches YouTube.'),
                 command('"Navigate to Bole Airport"', 'Opens directions in Maps.'),
+                section('Screen control (needs Accessibility)'),
+                command('"Take a screenshot" / "Lock the screen"', 'Works on whatever app is open.'),
+                command('"Go back" / "Go home" / "Recent apps"', 'Phone navigation.'),
+                command('"Scroll down" / "Swipe up"', 'Scrolls the app below.'),
+                command('"Tap Search" / "Type hello"', 'Taps text on screen or types into a field.'),
+                command('"Turn on Wi-Fi" / "Turn off Bluetooth"', 'Also airplane mode, hotspot, location.'),
+                section('About me'),
+                command('"Who built you?"', 'Tells you who made Vocax AI.'),
                 section('Phone controls'),
                 command('"Turn on the flashlight"', 'Also "turn off the flashlight".'),
                 command('"Volume up" / "Volume 50" / "Mute"', 'Changes the volume.'),
@@ -85,7 +93,7 @@ Future<void> showCommandsDialog(BuildContext context) {
 void showAboutVocax(BuildContext context) {
   showAboutDialog(
     context: context,
-    applicationName: 'Vocax',
+    applicationName: 'Vocax AI',
     applicationVersion: '1.0.0',
     applicationIcon: ClipRRect(
       borderRadius: BorderRadius.circular(12),
@@ -94,7 +102,11 @@ void showAboutVocax(BuildContext context) {
     applicationLegalese: '© ${DateTime.now().year} Sena Alemayehu',
     children: const [
       SizedBox(height: 12),
+      Text('Your Voice. Your World.'),
+      SizedBox(height: 8),
       Text('A multilingual AI voice assistant for everyday life.'),
+      SizedBox(height: 8),
+      Text('Built by Sena Alemayehu, professional software engineer.'),
     ],
   );
 }

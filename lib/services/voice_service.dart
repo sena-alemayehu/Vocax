@@ -1,6 +1,8 @@
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 
+import 'language_service.dart';
+
 /// Wraps speech recognition (speech_to_text) and speech output (flutter_tts).
 class VoiceService {
   final stt.SpeechToText _speech = stt.SpeechToText();
@@ -23,16 +25,16 @@ class VoiceService {
     switch (code) {
       case 'error_speech_timeout':
       case 'error_no_match':
-        return 'I did not hear anything. Tap Start Listening and speak after the button changes.';
+        return 'I did not hear anything. Tap the mic and speak after it starts listening.';
       case 'error_permission':
-        return 'Microphone permission is needed. Allow it in your phone settings and try again.';
+        return 'Microphone permission is needed. Open the menu, App Permissions, and allow the microphone.';
       case 'error_network':
       case 'error_network_timeout':
       case 'error_server':
-        return 'The speech service could not connect. Check your internet and try again.';
+        return 'Voice recognition could not connect. Check your internet, or download the offline voice pack for your language (menu, Language, Install voice).';
       case 'error_language_not_supported':
       case 'error_language_unavailable':
-        return 'This language is not supported by the speech service on this phone.';
+        return 'This language is not available in the speech service on this phone. See menu, Language, Install voice.';
       case 'error_audio':
         return 'There was a problem with the microphone. Try again.';
       case 'error_busy':
@@ -75,7 +77,15 @@ class VoiceService {
     return _speechReady;
   }
 
-  /// Finds the installed recognizer locale matching [wanted] (e.g. `om_ET`).
+  /// Locale ids the phone's speech service knows (empty if unavailable).
+  Future<List<String>> supportedLocales() async {
+    if (!await _ensureSpeechReady()) return const [];
+    final locales = await _speech.locales();
+    return [for (final locale in locales) locale.localeId];
+  }
+
+  /// Finds the recognizer locale matching [wanted] (e.g. `om_ET`): the exact
+  /// one first, then any locale of the same language (e.g. `zh_TW` for `zh_CN`).
   Future<String?> _resolveLocale(String wanted) async {
     String clean(String value) => value.toLowerCase().replaceAll('-', '_');
 
@@ -83,13 +93,20 @@ class VoiceService {
     for (final locale in locales) {
       if (clean(locale.localeId) == clean(wanted)) return locale.localeId;
     }
+    for (final locale in locales) {
+      if (languageOf(locale.localeId) == languageOf(wanted)) {
+        return locale.localeId;
+      }
+    }
     return null;
   }
 
   /// Starts listening. Returns false when speech recognition is unavailable.
+  /// With [onDevice] the phone's offline recognizer is used (no internet).
   Future<bool> startListening({
     required String localeId,
     required void Function(String words, bool isFinal) onResult,
+    bool onDevice = false,
   }) async {
     if (!await _ensureSpeechReady()) return false;
 
@@ -102,7 +119,10 @@ class VoiceService {
       localeId: resolved,
       listenFor: const Duration(seconds: 30),
       pauseFor: const Duration(seconds: 3),
-      listenOptions: stt.SpeechListenOptions(partialResults: true),
+      listenOptions: stt.SpeechListenOptions(
+        partialResults: true,
+        onDevice: onDevice,
+      ),
       onResult: (result) => onResult(result.recognizedWords, result.finalResult),
     );
     return true;
@@ -110,7 +130,13 @@ class VoiceService {
 
   Future<void> stopListening() => _speech.stop();
 
-  Future<void> speak(String text) => _tts.speak(text);
+  /// Speaks [text] and waits until it is finished (at most 12 seconds).
+  Future<void> speak(String text) async {
+    await _tts.speak(text).timeout(
+          const Duration(seconds: 12),
+          onTimeout: () => null,
+        );
+  }
 
   Future<void> stopSpeaking() => _tts.stop();
 

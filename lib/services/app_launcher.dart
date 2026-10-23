@@ -22,6 +22,18 @@ class AppLauncher {
     'ካሜራ': 'camera',
     'ጎግል': 'google',
     'ጂሜይል': 'gmail',
+    'ዋትሳፕ': 'whatsapp',
+    // Chinese
+    '油管': 'youtube',
+    '微信': 'wechat',
+    '谷歌': 'google',
+    '相机': 'camera',
+    '照相机': 'camera',
+    '设置': 'settings',
+    '地图': 'maps',
+    '抖音': 'tiktok',
+    '脸书': 'facebook',
+    '电报': 'telegram',
   };
 
   /// Used when the app is not installed.
@@ -60,9 +72,14 @@ class AppLauncher {
     return bestMatch<InstalledApp>(query, await apps(), (app) => app.name);
   }
 
-  /// Opens the web version of a well-known service.
+  /// The web address of a well-known service, if there is one.
+  String? webFallbackUrl(String spoken) {
+    return _webFallbacks[matchKey(_aliases[matchKey(spoken)] ?? spoken)];
+  }
+
+  /// Opens the web version of a well-known service in the phone's browser.
   Future<bool> openWebFallback(String spoken) async {
-    final url = _webFallbacks[matchKey(_aliases[matchKey(spoken)] ?? spoken)];
+    final url = webFallbackUrl(spoken);
     if (url == null) return false;
     return _device.openUrl(url);
   }

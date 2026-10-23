@@ -1,14 +1,63 @@
 import 'package:flutter/material.dart';
 
+import '../services/device_service.dart';
 import '../services/language_service.dart';
 import '../services/settings_service.dart';
+import '../services/voice_service.dart';
 import '../theme.dart';
 
-/// Full-screen language picker.
-class LanguageScreen extends StatelessWidget {
-  const LanguageScreen({super.key, required this.settings});
+/// Full-screen language picker, with the voice-pack status of each language.
+class LanguageScreen extends StatefulWidget {
+  const LanguageScreen({
+    super.key,
+    required this.settings,
+    required this.voice,
+    required this.device,
+  });
 
   final SettingsService settings;
+  final VoiceService voice;
+  final DeviceService device;
+
+  @override
+  State<LanguageScreen> createState() => _LanguageScreenState();
+}
+
+class _LanguageScreenState extends State<LanguageScreen>
+    with WidgetsBindingObserver {
+  SettingsService get settings => widget.settings;
+
+  /// Locale ids the phone's speech service knows. Null while loading.
+  List<String>? _locales;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _loadLocales();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// Back from the voice settings: check again.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _loadLocales();
+  }
+
+  Future<void> _loadLocales() async {
+    List<String> locales;
+    try {
+      locales = await widget.voice.supportedLocales();
+    } catch (_) {
+      locales = const [];
+    }
+    if (mounted) setState(() => _locales = locales);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -54,13 +103,37 @@ class LanguageScreen extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 8),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Text(
+                      'Languages marked "Install voice" need a free voice pack '
+                      'from your phone\'s speech service. Tap Install voice for '
+                      'the steps.',
+                      style: TextStyle(
+                        fontSize: 13,
+                        height: 1.4,
+                        color: context.textMuted,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
                   for (final language in LanguageService.supported)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 14),
                       child: _LanguageCard(
                         language: language,
                         selected: language.code == settings.languageCode,
+                        voiceStatus: _locales == null
+                            ? _VoiceStatus.checking
+                            : language.isIn(_locales!)
+                                ? _VoiceStatus.ready
+                                : _VoiceStatus.missing,
+                        onInstall: () => showVoicePackDialog(
+                          context,
+                          language: language,
+                          device: widget.device,
+                        ),
                         onTap: () {
                           settings.setLanguage(language.code);
                           Navigator.of(context).pop();
@@ -77,15 +150,21 @@ class LanguageScreen extends StatelessWidget {
   }
 }
 
+enum _VoiceStatus { checking, ready, missing }
+
 class _LanguageCard extends StatelessWidget {
   const _LanguageCard({
     required this.language,
     required this.selected,
+    required this.voiceStatus,
+    required this.onInstall,
     required this.onTap,
   });
 
   final VocaxLanguage language;
   final bool selected;
+  final _VoiceStatus voiceStatus;
+  final VoidCallback onInstall;
   final VoidCallback onTap;
 
   @override
@@ -131,6 +210,8 @@ class _LanguageCard extends StatelessWidget {
                         color: context.textSecondary,
                       ),
                     ),
+                    const SizedBox(height: 6),
+                    _statusRow(context, voiceStatus, onInstall),
                   ],
                 ),
               ),
@@ -149,6 +230,120 @@ class _LanguageCard extends StatelessWidget {
       ),
     );
   }
+}
+
+Widget _statusRow(
+  BuildContext context,
+  _VoiceStatus voiceStatus,
+  VoidCallback onInstall,
+) {
+    switch (voiceStatus) {
+      case _VoiceStatus.checking:
+        return Text(
+          'Checking voice...',
+          style: TextStyle(fontSize: 12.5, color: context.textMuted),
+        );
+      case _VoiceStatus.ready:
+        return const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.check_circle_rounded, size: 15, color: Color(0xFF2EAD5B)),
+            SizedBox(width: 5),
+            Text(
+              'Voice ready',
+              style: TextStyle(fontSize: 12.5, color: Color(0xFF2EAD5B)),
+            ),
+          ],
+        );
+      case _VoiceStatus.missing:
+        return InkWell(
+          onTap: onInstall,
+          borderRadius: BorderRadius.circular(8),
+          child: const Padding(
+            padding: EdgeInsets.symmetric(vertical: 2),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.download_rounded, size: 15, color: kBlue),
+                SizedBox(width: 5),
+                Text(
+                  'Install voice',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: kBlue,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+    }
+}
+
+/// Explains how to add a speech-recognition voice pack for [language].
+Future<void> showVoicePackDialog(
+  BuildContext context, {
+  required VocaxLanguage language,
+  required DeviceService device,
+}) {
+  final hardToFind = language.code == 'om' || language.code == 'ti';
+
+  return showDialog<void>(
+    context: context,
+    builder: (dialogContext) {
+      return AlertDialog(
+        title: Text('Install ${language.englishName} voice'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Android installs voice packs, not apps, so this takes a few taps:',
+              ),
+              const SizedBox(height: 12),
+              Text(
+                '1. Tap Open settings.\n'
+                '2. Open Speech recognition (or the Google speech service), '
+                'then Languages or Offline speech recognition.\n'
+                '3. Download ${language.englishName}.\n'
+                '4. Come back to Vocax AI. This screen updates by itself.',
+                style: const TextStyle(height: 1.5),
+              ),
+              if (hardToFind) ...[
+                const SizedBox(height: 12),
+                Text(
+                  'Note: ${language.englishName} is not offered by every phone\'s '
+                  'speech service. If it is not in the list, your phone cannot '
+                  'recognise it yet, and Vocax AI will listen in the closest '
+                  'language it has.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    height: 1.4,
+                    color: dialogContext.textSecondary,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Close'),
+          ),
+          FilledButton(
+            onPressed: () {
+              device.openVoiceSettings();
+              Navigator.of(dialogContext).pop();
+            },
+            child: const Text('Open settings'),
+          ),
+        ],
+      );
+    },
+  );
 }
 
 /// Rounded colored square with the two-letter language code.

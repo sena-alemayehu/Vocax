@@ -4,18 +4,20 @@ import '../services/settings_service.dart';
 import '../theme.dart';
 import 'copyright_footer.dart';
 
-/// Side menu: language, theme, voice commands and About.
+/// Side menu: language, app permissions, voice commands and About.
 class VocaxDrawer extends StatelessWidget {
   const VocaxDrawer({
     super.key,
     required this.settings,
     required this.onLanguageTap,
+    required this.onPermissionsTap,
     required this.onCommandsTap,
     required this.onAboutTap,
   });
 
   final SettingsService settings;
   final VoidCallback onLanguageTap;
+  final VoidCallback onPermissionsTap;
   final VoidCallback onCommandsTap;
   final VoidCallback onAboutTap;
 
@@ -52,7 +54,7 @@ class VocaxDrawer extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Vocax',
+                              'Vocax AI',
                               style: TextStyle(
                                 fontSize: 22,
                                 fontWeight: FontWeight.w700,
@@ -60,7 +62,7 @@ class VocaxDrawer extends StatelessWidget {
                               ),
                             ),
                             Text(
-                              'Your voice. Your world.',
+                              'Your Voice. Your World.',
                               style: TextStyle(
                                 fontSize: 13,
                                 color: context.textSecondary,
@@ -79,15 +81,10 @@ class VocaxDrawer extends StatelessWidget {
                   subtitle: Text(settings.language.name),
                   onTap: () => _closeThen(context, onLanguageTap),
                 ),
-                SwitchListTile(
-                  secondary: Icon(
-                    settings.darkMode
-                        ? Icons.dark_mode_rounded
-                        : Icons.light_mode_rounded,
-                  ),
-                  title: const Text('Dark mode'),
-                  value: settings.darkMode,
-                  onChanged: (value) => settings.setDarkMode(value),
+                ListTile(
+                  leading: const Icon(Icons.verified_user_rounded),
+                  title: const Text('App Permissions'),
+                  onTap: () => _closeThen(context, onPermissionsTap),
                 ),
                 ListTile(
                   leading: const Icon(Icons.record_voice_over_rounded),

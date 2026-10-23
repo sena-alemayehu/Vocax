@@ -1,3 +1,4 @@
+import '../models/command_result.dart';
 import '../models/device_contact.dart';
 import 'app_launcher.dart';
 import 'contact_service.dart';
@@ -6,7 +7,8 @@ import 'device_service.dart';
 /// Turns what you say into an action on the phone and a spoken reply.
 ///
 /// Commands are matched on the (lower-cased, punctuation-free) text. The main
-/// verbs also work in French, Spanish, Amharic and Afaan Oromoo.
+/// verbs also work in French, Spanish, Chinese, Amharic, Tigrinya and Afaan
+/// Oromoo. Everything except web search works without internet.
 class CommandHandler {
   CommandHandler._(this._device, this._launcher, this._contacts, this._clock);
 
@@ -80,23 +82,40 @@ class CommandHandler {
     _SettingsTarget(['accessibility'], 'accessibility', 'accessibility'),
   ];
 
-  late final List<Future<String?> Function(String core)> _rules = [
-    _smallTalk,
-    _alarmOrTimer,
-    _timeAndDate,
-    _battery,
-    _flashlight,
-    _volume,
-    _media,
-    _camera,
-    _sms,
-    _call,
-    _navigate,
-    _settings,
+  /// What Vocax says when asked who made it.
+  static const String builderReply =
+      'I was built by Sena Alemayehu, and he is a professional software engineer.';
+
+  late final List<Future<CommandResult?> Function(String core)> _rules = [
+    _whoBuilt,
+    _plain(_smallTalk),
+    _plain(_alarmOrTimer),
+    _plain(_timeAndDate),
+    _plain(_battery),
+    _plain(_flashlight),
+    _plain(_volume),
+    _plain(_media),
+    _plain(_camera),
+    _plain(_sms),
+    _plain(_call),
+    _plain(_navigate),
+    _toggleSwitch,
+    _screenControl,
+    _plain(_settings),
     _youtube,
     _openApp,
     _webSearch,
   ];
+
+  /// Wraps a rule that only produces text.
+  Future<CommandResult?> Function(String) _plain(
+    Future<String?> Function(String core) rule,
+  ) {
+    return (core) async {
+      final reply = await rule(core);
+      return reply == null ? null : CommandResult(reply: reply);
+    };
+  }
 
   /// Lower-cases, strips punctuation and collapses whitespace. Letters of any
   /// script (for example Amharic) are kept.
@@ -109,8 +128,8 @@ class CommandHandler {
   }
 
   static final List<RegExp> _fillerPrefixes = [
-    RegExp(r'^(?:ok |okay )?(?:hello|hey|hi) vocax\b ?'),
-    RegExp(r'^(?:ok |okay )?vocax\b ?'),
+    RegExp(r'^(?:ok |okay )?(?:hello|hey|hi) vocax(?: ai)?\b ?'),
+    RegExp(r'^(?:ok |okay )?vocax(?: ai)?\b ?'),
     RegExp(
       r'^(?:please|can you|could you|would you|will you|i want you to|i want to|i would like to|i d like to|i need you to) ?',
     ),
@@ -134,26 +153,52 @@ class CommandHandler {
         .trim();
   }
 
-  Future<String> handle(String words) async {
+  /// Works out what [words] mean and does the instant parts. Opening an app
+  /// ([CommandResult.launch]) and showing a web page ([CommandResult.webUrl])
+  /// are left to the caller so the screen can show them first.
+  Future<CommandResult> handleFull(String words) async {
     final text = normalize(words);
     final core = _stripFillers(text);
 
     if (core.isEmpty) {
-      return text.contains('vocax')
-          ? 'Hello! I am Vocax. How can I help you?'
-          : 'I did not catch that. Please try again.';
+      return CommandResult(
+        reply: text.contains('vocax')
+            ? 'Hello! I am Vocax AI. How can I help you?'
+            : 'I did not catch that. Please try again.',
+      );
     }
 
     try {
       for (final rule in _rules) {
-        final reply = await rule(core);
-        if (reply != null) return reply;
+        final result = await rule(core);
+        if (result != null) return result;
       }
     } catch (_) {
-      return 'Sorry, something went wrong with that command.';
+      return const CommandResult(
+        reply: 'Sorry, something went wrong with that command.',
+      );
     }
 
-    return 'I heard you say: $words';
+    return CommandResult(reply: 'I heard you say: $words');
+  }
+
+  /// Like [handleFull], but also opens the app or web page itself and
+  /// returns just the reply. Handy when there is no screen (and in tests).
+  Future<String> handle(String words) async {
+    final result = await handleFull(words);
+
+    final url = result.webUrl;
+    if (url != null) await _device.openUrl(url);
+
+    final launch = result.launch;
+    if (launch != null) await launch();
+
+    return result.reply;
+  }
+
+  String _offline(String what) {
+    return 'You are offline, so I cannot $what right now. I can still open '
+        'apps, make calls, set alarms and control your phone.';
   }
 
   // ---------------------------------------------------------------------------
@@ -165,7 +210,7 @@ class CommandHandler {
       return 'I am ready to help you. What would you like to do?';
     }
     if (core.contains('your name') || core == 'who are you') {
-      return 'My name is Vocax, your personal voice assistant.';
+      return 'My name is Vocax AI, your personal voice assistant.';
     }
     if (RegExp(r'^(?:thank you|thanks)').hasMatch(core)) {
       return 'You are welcome.';
@@ -173,7 +218,8 @@ class CommandHandler {
     if (core == 'help' || core.contains('what can you do')) {
       return 'I can open apps, call and message your contacts, search Google '
           'or YouTube, set alarms and timers, control the flashlight, volume '
-          'and music, and open settings.';
+          'and music, switch Wi-Fi and Bluetooth, take screenshots, scroll and '
+          'tap on screen, and open settings.';
     }
     return null;
   }
@@ -432,6 +478,8 @@ class CommandHandler {
     final match = RegExp(
           r'^(?:call|phone|dial|ring|appelle|appeler|llama|llamar) (.+)$',
         ).firstMatch(core) ??
+        RegExp(r'^(?:打电话给|打电话|拨打|呼叫)\s*(.+)$').firstMatch(core) ??
+        RegExp(r'^给\s*(.+?)\s*打电话$').firstMatch(core) ??
         RegExp(r'^(.+) (?:ደውል|ደውልልኝ|bilbili|bilbilaa)$').firstMatch(core);
     if (match == null) return null;
 
@@ -462,8 +510,9 @@ class CommandHandler {
 
   Future<String?> _sms(String core) async {
     final match = RegExp(
-      r'^(?:send (?:a |an )?(?:text |sms |message )?(?:message )?to|text|sms|message) (.+)$',
-    ).firstMatch(core);
+          r'^(?:send (?:a |an )?(?:text |sms |message )?(?:message )?to|text|sms|message) (.+)$',
+        ).firstMatch(core) ??
+        RegExp(r'^(?:发短信给|发信息给|发消息给)\s*(.+)$').firstMatch(core);
     if (match == null) return null;
 
     var rest = match.group(1)!.trim();
@@ -541,7 +590,7 @@ class CommandHandler {
     return ok ? 'Navigating to $place.' : 'I could not open maps.';
   }
 
-  Future<String?> _youtube(String core) async {
+  Future<CommandResult?> _youtube(String core) async {
     final match = RegExp(
           r'^search (?:on )?(?:youtube|you tube) (?:for )?(.+)$',
         ).firstMatch(core) ??
@@ -552,16 +601,21 @@ class CommandHandler {
     if (match == null) return null;
 
     final query = match.group(1)!;
-    final url =
-        'https://www.youtube.com/results?search_query=${Uri.encodeQueryComponent(query)}';
-    final ok = await _device.openUrl(url);
-    return ok ? 'Searching YouTube for $query.' : 'I could not open YouTube.';
+    if (!await _device.isOnline()) return CommandResult(reply: _offline('search YouTube'));
+
+    return CommandResult(
+      reply: 'Searching YouTube for $query.',
+      webUrl:
+          'https://m.youtube.com/results?search_query=${Uri.encodeQueryComponent(query)}',
+      webTitle: 'YouTube',
+    );
   }
 
-  Future<String?> _openApp(String core) async {
+  Future<CommandResult?> _openApp(String core) async {
     final match = RegExp(
           r'^(?:open|launch|start|run|ouvre|ouvrir|abre|abrir|ክፈት|bani) (?:the )?(.+?)(?: app| application)?$',
         ).firstMatch(core) ??
+        RegExp(r'^(?:打开|开启|启动)\s*(.+?)(?:应用|软件)?$').firstMatch(core) ??
         RegExp(r'^(.+?) (?:ክፈት|bani|baneeti)$').firstMatch(core);
     if (match == null) return null;
 
@@ -569,27 +623,299 @@ class CommandHandler {
 
     final app = await _launcher.find(target);
     if (app != null) {
-      final ok = await _device.launchApp(app.package);
-      return ok ? 'Opening ${app.name}.' : 'I could not open ${app.name}.';
+      final icon = await _device.appIcon(app.package);
+      return CommandResult(
+        reply: 'Opening ${app.name}.',
+        app: app,
+        appIcon: icon,
+        launch: () => _device.launchApp(app.package),
+      );
     }
 
-    if (await _launcher.openWebFallback(target)) {
-      return 'Opening $target in your browser.';
+    final site = _launcher.webFallbackUrl(target);
+    if (site != null) {
+      if (!await _device.isOnline()) return CommandResult(reply: _offline('open $target'));
+      return CommandResult(
+        reply: 'Opening $target.',
+        webUrl: site,
+        webTitle: target,
+      );
     }
-    return 'I could not find an app called $target on your phone.';
+    return CommandResult(
+      reply: 'I could not find an app called $target on your phone.',
+    );
   }
 
-  Future<String?> _webSearch(String core) async {
+  Future<CommandResult?> _webSearch(String core) async {
     final match = RegExp(
           r'^(?:search|google|look up|search for|search the web for|search google for|find|cherche|rechercher|busca|buscar) (?:for )?(.+)$',
         ).firstMatch(core) ??
-        RegExp(r'^(.+?) (?:ፈልግ|barbaadi)$').firstMatch(core);
+        RegExp(r'^(?:搜索|搜|查找|查询)\s*(.+)$').firstMatch(core) ??
+        RegExp(r'^(.+?) (?:ፈልግ|ድለይ|barbaadi)$').firstMatch(core);
     if (match == null) return null;
 
     final query = match.group(1)!;
-    final url = 'https://www.google.com/search?q=${Uri.encodeQueryComponent(query)}';
-    final ok = await _device.openUrl(url);
-    return ok ? 'Searching Google for $query.' : 'I could not open the browser.';
+    if (!await _device.isOnline()) return CommandResult(reply: _offline('search the web'));
+
+    return CommandResult(
+      reply: 'Searching Google for $query.',
+      webUrl: 'https://www.google.com/search?q=${Uri.encodeQueryComponent(query)}',
+      webTitle: 'Google',
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // About Vocax
+  // ---------------------------------------------------------------------------
+
+  static final RegExp _whoBuiltPattern = RegExp(
+    r'who (?:built|made|created|developed|programmed|designed|coded|wrote) (?:you|vocax)'
+    r'|who (?:is|s) your (?:developer|creator|maker|builder|programmer|author|owner)'
+    r'|who is (?:the )?developer|who is behind you|who is your dev'
+    r'|qui (?:t a|ta|vous a) (?:cr[ée]+|construit|d[ée]velopp[ée]|fait|programm[ée])'
+    r'|qui est (?:ton|votre) (?:cr[ée]ateur|d[ée]veloppeur)'
+    r'|qui[eé]n te (?:cre[óo]|construy[óo]|desarroll[óo]|hizo|program[óo])'
+    r'|qui[eé]n es tu (?:creador|desarrollador)'
+    r'|谁(?:创造|开发|制作|做|编写|设计|创建)了?你|你是谁(?:开发|创造|做|制作)的'
+    r'|ማን (?:ሰራህ|ሰራሽ|ፈጠረህ|ፈጠረሽ|አበለፀገህ|አበለፀገሽ)'
+    r'|ማን ነው (?:የሰራህ|የሰራሽ)'
+    r'|መን (?:ሰሪሕካ|ሰሪሑ|ፈጠረካ|ፈጠረትኪ)'
+    r'|eenyu(?:tu)? (?:si|isin) (?:hojjete|ijaare|uume|misoome)',
+  );
+
+  Future<CommandResult?> _whoBuilt(String core) async {
+    if (_whoBuiltPattern.hasMatch(core)) {
+      return const CommandResult(reply: builderReply);
+    }
+    return null;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Switches and screen control (need the Accessibility service)
+  // ---------------------------------------------------------------------------
+
+  static const String _accessibilityHelp =
+      'Turn on Vocax AI in the Accessibility settings I just opened, then try '
+      'again. If the switch is greyed out on Android 13 or newer, open the '
+      'menu, App Permissions, Open app info, tap the three dots and choose '
+      'Allow restricted settings.';
+
+  Future<CommandResult> _needAccessibility(String what) async {
+    await _device.openSettings('accessibility');
+    return CommandResult(reply: 'To $what, I need the Accessibility service. $_accessibilityHelp');
+  }
+
+  static const List<_Toggle> _toggles = [
+    _Toggle(['wifi', 'wi fi'], ['wi-fi', 'wifi', 'internet'], 'wifi', 'Wi-Fi'),
+    _Toggle(['bluetooth', 'blue tooth'], ['bluetooth'], 'bluetooth', 'Bluetooth'),
+    _Toggle(
+      ['airplane', 'aeroplane', 'flight mode'],
+      ['airplane', 'aeroplane', 'flight mode'],
+      'airplane',
+      'airplane mode',
+    ),
+    _Toggle(['hotspot'], ['hotspot'], 'hotspot', 'hotspot'),
+    _Toggle(
+      ['do not disturb', 'dnd'],
+      ['do not disturb', 'dnd'],
+      'dnd',
+      'Do Not Disturb',
+    ),
+    _Toggle(
+      ['auto rotate', 'autorotate', 'rotation'],
+      ['auto-rotate', 'auto rotate', 'rotation'],
+      'rotation',
+      'auto-rotate',
+    ),
+    _Toggle(
+      ['battery saver', 'power saving'],
+      ['battery saver', 'power saving'],
+      'battery_saver',
+      'battery saver',
+    ),
+    _Toggle(['nfc'], ['nfc'], 'nfc', 'NFC'),
+    _Toggle(['location', 'gps'], ['location'], 'location', 'location'),
+    _Toggle(
+      ['mobile data', 'cellular data'],
+      ['mobile data', 'cellular data'],
+      'data',
+      'mobile data',
+    ),
+  ];
+
+  Future<CommandResult?> _toggleSwitch(String core) async {
+    final verb = RegExp(
+      r'\b(?:turn|switch|enable|disable|toggle|activate|deactivate)\b',
+    ).hasMatch(core);
+    final on = RegExp(r'\b(?:on|enable|activate)\b').hasMatch(core);
+    final off = RegExp(r'\b(?:off|disable|deactivate)\b').hasMatch(core);
+    if (!verb || on == off) return null;
+
+    for (final toggle in _toggles) {
+      if (!toggle.keywords.any(core.contains)) continue;
+
+      final state = on ? 'on' : 'off';
+
+      Future<CommandResult> openSettingsInstead(String why) async {
+        final ok = await _device.openSettings(toggle.target);
+        return CommandResult(
+          reply: ok
+              ? '$why I opened ${toggle.label} settings, so tap the switch there.'
+              : 'I could not open ${toggle.label} settings.',
+        );
+      }
+
+      if (!await _device.a11yEnabled()) {
+        return openSettingsInstead(
+          'Android does not let apps flip ${toggle.label} directly. To let me '
+          'do it by voice, turn on Vocax AI under menu, App Permissions, '
+          'Accessibility.',
+        );
+      }
+
+      final outcome = await _device.toggleSystem(toggle.labels, on);
+      switch (outcome) {
+        case 'done':
+          return CommandResult(reply: '${toggle.label} turned $state.');
+        case 'already':
+          return CommandResult(reply: '${toggle.label} is already $state.');
+        case 'noservice':
+          return openSettingsInstead('Accessibility is not running.');
+        default:
+          return openSettingsInstead(
+            'I could not find the ${toggle.label} switch in quick settings.',
+          );
+      }
+    }
+    return null;
+  }
+
+  static final List<_ScreenAction> _screenActions = [
+    _ScreenAction(
+      RegExp(r'^(?:take (?:a )?)?screen ?shot$|^(?:capture|grab|take) (?:the |my )?screen$'),
+      'screenshot',
+      'Taking a screenshot.',
+      true,
+      'take a screenshot',
+    ),
+    _ScreenAction(
+      RegExp(r'^lock(?: the| my)?(?: screen| phone| device)?$'),
+      'lock',
+      'Locking the screen.',
+      false,
+      'lock the screen',
+    ),
+    _ScreenAction(
+      RegExp(r'^(?:go )?back$'),
+      'back',
+      'Going back.',
+      true,
+      'go back',
+    ),
+    _ScreenAction(
+      RegExp(r'^(?:go )?home$|^go to (?:the )?home(?: screen)?$|^home screen$'),
+      'home',
+      'Going to the home screen.',
+      false,
+      'go home',
+    ),
+    _ScreenAction(
+      RegExp(r'^(?:show |open )?(?:the )?(?:recent apps|recents|recent|app switcher)$'),
+      'recents',
+      'Showing recent apps.',
+      false,
+      'show recent apps',
+    ),
+    _ScreenAction(
+      RegExp(r'^(?:open |show |pull down )?(?:the )?notifications?(?: panel| shade)?$'),
+      'notifications',
+      'Opening notifications.',
+      false,
+      'open notifications',
+    ),
+    _ScreenAction(
+      RegExp(r'^(?:open |show )?(?:the )?quick settings$'),
+      'quick_settings',
+      'Opening quick settings.',
+      false,
+      'open quick settings',
+    ),
+    _ScreenAction(
+      RegExp(r'^(?:open |show )?(?:the )?power menu$'),
+      'power',
+      'Opening the power menu.',
+      false,
+      'open the power menu',
+    ),
+  ];
+
+  Future<CommandResult?> _screenControl(String core) async {
+    for (final action in _screenActions) {
+      if (!action.pattern.hasMatch(core)) continue;
+
+      if (!await _device.a11yEnabled()) return _needAccessibility(action.what);
+      final ok = await _device.a11yAction(
+        action.name,
+        stepAside: action.stepAside,
+      );
+      return CommandResult(
+        reply: ok
+            ? action.reply
+            : 'I could not ${action.what}. Check that Vocax AI is turned on in Accessibility settings.',
+      );
+    }
+
+    final scroll = RegExp(
+      r'^(scroll|swipe)(?: the page| the screen| page| screen)? (up|down|left|right)$',
+    ).firstMatch(core);
+    if (scroll != null) {
+      final word = scroll.group(1)!;
+      final direction = scroll.group(2)!;
+      // "swipe up" moves the finger up, which shows what is further down.
+      final String where;
+      if (word == 'swipe') {
+        where = const {
+          'up': 'down',
+          'down': 'up',
+          'left': 'right',
+          'right': 'left',
+        }[direction]!;
+      } else {
+        where = direction;
+      }
+
+      if (!await _device.a11yEnabled()) return _needAccessibility('scroll');
+      final ok = await _device.a11yScroll(where);
+      return CommandResult(
+        reply: ok ? 'Scrolling $direction.' : 'I could not scroll the screen.',
+      );
+    }
+
+    final tap = RegExp(
+      r'^(?:tap|click|press|select|touch)(?: on)?(?: the)? (.+)$',
+    ).firstMatch(core);
+    if (tap != null) {
+      final target = tap.group(1)!;
+      if (!await _device.a11yEnabled()) return _needAccessibility('tap on the screen');
+      final ok = await _device.a11yClick(target);
+      return CommandResult(
+        reply: ok ? 'Tapped $target.' : 'I could not find $target on the screen.',
+      );
+    }
+
+    final type = RegExp(r'^type (.+)$').firstMatch(core);
+    if (type != null) {
+      final text = type.group(1)!;
+      if (!await _device.a11yEnabled()) return _needAccessibility('type for you');
+      final ok = await _device.a11yType(text);
+      return CommandResult(
+        reply: ok
+            ? 'Typed $text.'
+            : 'I could not type that. Tap the text box first so the cursor is in it.',
+      );
+    }
+
+    return null;
   }
 }
 
@@ -606,4 +932,38 @@ class _SettingsTarget {
   final List<String> keywords;
   final String target;
   final String label;
+}
+
+class _Toggle {
+  const _Toggle(this.keywords, this.labels, this.target, this.label);
+
+  /// Words you say.
+  final List<String> keywords;
+
+  /// Names the switch can have in the quick-settings panel (lower-case).
+  final List<String> labels;
+
+  /// Settings page to open if the switch cannot be flipped.
+  final String target;
+  final String label;
+}
+
+class _ScreenAction {
+  const _ScreenAction(
+    this.pattern,
+    this.name,
+    this.reply,
+    this.stepAside,
+    this.what,
+  );
+
+  final RegExp pattern;
+  final String name;
+  final String reply;
+
+  /// Move Vocax out of the way first, so the action lands on the app below.
+  final bool stepAside;
+
+  /// Used in "I could not ...".
+  final String what;
 }

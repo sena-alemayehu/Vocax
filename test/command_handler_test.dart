@@ -21,6 +21,12 @@ class FakeDevice extends DeviceService {
   final List<String> alarms = [];
   final List<int> timers = [];
 
+  bool online = true;
+  bool accessibilityOn = false;
+  final List<String> screenActions = [];
+  final List<String> settingsOpened = [];
+  final List<String> toggled = [];
+
   @override
   Future<List<InstalledApp>> listApps() async => apps;
 
@@ -86,6 +92,42 @@ class FakeDevice extends DeviceService {
 
   @override
   Future<int> batteryLevel() async => 82;
+
+  @override
+  Future<bool> isOnline() async => online;
+
+  @override
+  Future<bool> openSettings(String target) async {
+    settingsOpened.add(target);
+    return true;
+  }
+
+  @override
+  Future<bool> a11yEnabled() async => accessibilityOn;
+
+  @override
+  Future<bool> a11yAction(String name, {bool stepAside = false}) async {
+    screenActions.add(name);
+    return true;
+  }
+
+  @override
+  Future<bool> a11yScroll(String direction) async {
+    screenActions.add('scroll_$direction');
+    return true;
+  }
+
+  @override
+  Future<bool> a11yClick(String text) async {
+    screenActions.add('click_$text');
+    return true;
+  }
+
+  @override
+  Future<String> toggleSystem(List<String> labels, bool on) async {
+    toggled.add('${labels.first}:$on');
+    return 'done';
+  }
 }
 
 void main() {
@@ -248,6 +290,100 @@ void main() {
       await handler.handle('what is the date'),
       'Today is Wednesday, October 21.',
     );
+  });
+
+  test('says who built it, in several languages', () async {
+    final handler = CommandHandler(device: newDevice());
+    const questions = [
+      'Who built you?',
+      'who developed you',
+      'Who made you',
+      'hey vocax who is your developer',
+      'qui t a créé',
+      'quién te creó',
+      '谁开发了你',
+    ];
+    for (final question in questions) {
+      expect(
+        await handler.handle(question),
+        CommandHandler.builderReply,
+        reason: question,
+      );
+    }
+    expect(CommandHandler.builderReply, contains('Sena Alemayehu'));
+    expect(CommandHandler.builderReply, contains('professional software engineer'));
+  });
+
+  test('opening an app returns a card and waits for the screen to launch it', () async {
+    final device = newDevice();
+    final handler = CommandHandler(device: device);
+
+    final result = await handler.handleFull('open youtube');
+    expect(result.reply, 'Opening YouTube.');
+    expect(result.app?.package, 'com.google.android.youtube');
+    expect(device.launched, isEmpty);
+
+    expect(await result.launch!(), isTrue);
+    expect(device.launched, ['com.google.android.youtube']);
+  });
+
+  test('web searches are shown inside the app', () async {
+    final device = newDevice();
+    final handler = CommandHandler(device: device);
+
+    final result = await handler.handleFull('search for flutter');
+    expect(result.webUrl, contains('google.com/search?q=flutter'));
+    expect(device.urls, isEmpty);
+  });
+
+  test('works offline without web actions', () async {
+    final device = newDevice()..online = false;
+    final handler = CommandHandler(device: device);
+
+    expect(await handler.handle('search for flutter'), contains('offline'));
+    expect(await handler.handle('open youtube'), 'Opening YouTube.');
+    expect(await handler.handle('turn on the flashlight'), 'Flashlight on.');
+    expect(device.launched, ['com.google.android.youtube']);
+    expect(device.urls, isEmpty);
+  });
+
+  test('Wi-Fi switch uses accessibility, or opens settings without it', () async {
+    final device = newDevice();
+    final handler = CommandHandler(device: device);
+
+    final without = await handler.handle('turn on wifi');
+    expect(without, contains('tap the switch'));
+    expect(device.settingsOpened, ['wifi']);
+
+    device.accessibilityOn = true;
+    expect(await handler.handle('turn off bluetooth'), 'Bluetooth turned off.');
+    expect(device.toggled, ['bluetooth:false']);
+  });
+
+  test('screen control needs the accessibility service', () async {
+    final device = newDevice();
+    final handler = CommandHandler(device: device);
+
+    expect(await handler.handle('take a screenshot'), contains('Accessibility'));
+    expect(device.settingsOpened, ['accessibility']);
+
+    device.accessibilityOn = true;
+    await handler.handle('take a screenshot');
+    await handler.handle('go home');
+    await handler.handle('swipe up');
+    await handler.handle('tap search');
+    expect(
+      device.screenActions,
+      ['screenshot', 'home', 'scroll_down', 'click_search'],
+    );
+  });
+
+  test('understands Chinese commands', () async {
+    final device = newDevice();
+    final handler = CommandHandler(device: device);
+
+    await handler.handle('打开YouTube');
+    expect(device.launched, ['com.google.android.youtube']);
   });
 
   test('echoes things it does not understand', () async {
